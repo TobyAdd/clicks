@@ -16,7 +16,7 @@ def read_int32(f, endianness):
     return int.from_bytes(f.read(4), {True: "little", False: "big"}[endianness])
 
 def read_bool8(f):
-    return bool.from_bytes(f.read(1))
+    return bool.from_bytes(f.read(1), byteorder='little')
 
 print("Replay Engine Clickbot by TobyAdd")
 
