@@ -183,7 +183,7 @@ for arg in argv[1:]:
 required_args = [replay_file, clickpack_folder, output_file]
 
 if any([i is None for i in required_args]):
-    print(f"usage: {sys.argv[0]} -r\"<*.re>\" -c\"<*>\" -o\"<*.(mp3|wav|ogg|flac|...)>\" [-s<0..inf>] [-h<0..inf>] [-e<0..inf>]")
+    print(f"usage: {sys.argv[0]} -r\"<*.re>\" -c\"<*>\" -o\"<*.(mp3|wav|ogg|flac|...)>\" [-softc<0..inf>] [-hardc<0..inf>] [-end<0..inf>]")
     exit(1)
 
 print(f"Replay: {replay_file}")
