@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 from pydub import AudioSegment
-from sys import argv
+from sys import argv, exit
+import fnmatch
 import struct
 import random
 import shutil
@@ -112,44 +113,10 @@ class Clickpack:
 
         return clickpack
 
-class ReplayParser:
-    def __init__(self, path):
-        self.fps, self.data = self.parse(path)
-
-    @staticmethod
-    def read_float32(f, endianness):
-        [read_f] = struct.unpack(f"{'<' if endianness else '>'}f", f.read(4))
-        return read_f
-
-    @staticmethod
-    def read_int32(f, endianness):
-        return int.from_bytes(f.read(4), {True: "little", False: "big"}[endianness])
-
-    @staticmethod
-    def read_bool8(f):
-        return bool.from_bytes(f.read(1), byteorder='little')
-
-    def parse(self, replay_file):
-        with open(replay_file, "rb") as f:
-            fps = self.read_float32(f, True)
-            replay_size1 = self.read_int32(f, True)
-            replay_size = self.read_int32(f, True)
-
-            f.read(32 * replay_size1)
-    
-            replay = []
-            for i in range(replay_size):
-                frame = self.read_int32(f, True)
-                hold = self.read_bool8(f)
-                player = self.read_bool8(f)
-                f.read(2)
-                replay.append({
-                    "frame": frame,
-                    "hold": hold,
-                    "player": player,
-                })
-
-        return fps, replay
+def parse_seconds(time):
+    seconds = time % 60
+    mins = (int(time) % 60 ** 2) // 60
+    return f"{mins:0>2}:{round(seconds, 2):0>2}"
 
 def print_progress_bar(value, max_value, pb_len):
     print(f"[{''.join(['#' if i / pb_len < value / max_value else ' ' for i in range(pb_len)])}], {round(value / max_value * 100):>3}%", end="\r")
@@ -183,26 +150,35 @@ for arg in argv[1:]:
 required_args = [replay_file, clickpack_folder, output_file]
 
 if any([i is None for i in required_args]):
-    print(f"usage: {sys.argv[0]} -r\"<*.re>\" -c\"<*>\" -o\"<*.(mp3|wav|ogg|flac|...)>\" [-softc<0..inf>] [-hardc<0..inf>] [-end<0..inf>]")
+    print(f"usage: {sys.argv[0]} -r\"<*.re>\" -c\"<*>\" -o\"<*.(mp3|wav|ogg|flac|...)>\" [-softc<-1..inf>] [-hardc<-1..inf>] [-end<0..inf>]")
     exit(1)
 
 print(f"Replay: {replay_file}")
 
 ########## PARSING ##########
 
-replay = ReplayParser(replay_file)
+for i in os.listdir("parsers"):
+    if i.endswith(".py"):
+        parser = getattr(__import__(f"parsers.{i.replace('.py', '')}"), i.replace(".py", ''))
 
-print(f"FPS: {replay.fps}")
-print(f"Actions: {len(replay.data)}")
+        if fnmatch.fnmatch(replay_file, parser.wildcard):
+            break
+
+replay = parser.Parser(replay_file).parse()
+
+print(f"Parser: {parser.name} ({os.path.basename(parser.__file__)})")
+print(f"FPS: {replay['fps']}")
+print(f"Actions: {len(replay['replay'])}")
 
 ########## GENERATING ##########
 
+last_frame = replay['replay'][-1]["frame"]
+
+duration = (last_frame / replay['fps'] * 1000) + (end_seconds * 1000)
+
+print(f"Duration: {parse_seconds(duration)}")
+
 clickpack = Clickpack(clickpack_folder)
-
-last_frame = replay.data[-1]["frame"]
-
-duration =  last_frame / replay.fps  * 1000  + end_seconds * 1000
-#          < length in secs > <to ms> <   add end time   >
 
 output = AudioSegment.silent(duration=duration)
 
@@ -212,10 +188,10 @@ p1_last_click = 0
 p2_click_delta = 0
 p2_last_click = 0
 
-for key, action in enumerate(replay.data, start=1):
-    print_progress_bar(key, len(replay.data), os.get_terminal_size()[0] - 9)
-    # print(f"Rendering Actions ({i}/{len(replay.data)})", end="\r")
-    player = int(action["player"]) + 1
+for key, action in enumerate(replay['replay'], start=1):
+    print_progress_bar(key, len(replay['replay']), os.get_terminal_size()[0] - 9)
+    # print(f"Rendering Actions ({i}/{len(replay['replay'])})", end="\r")
+    player = action["player"]
 
     if player == 1:
         p1_click_delta = action["frame"] - p1_last_click
@@ -242,7 +218,7 @@ for key, action in enumerate(replay.data, start=1):
 
         p2_last_click = action["frame"]
 
-    position = action["frame"] / replay.fps * 1000
+    position = action["frame"] / replay['fps'] * 1000
     output = output.overlay(sound, position=position)
 
 output.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
