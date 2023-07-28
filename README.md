@@ -19,7 +19,7 @@ file in `parser` directory, and add to it:
 - **Variable** `name` containing human-readable parser name (e.g. `ReplayEngine`)
 - **Variable** `wildcard` containing wildcard for replay file (e.g. `*.re`)
 - **Class** `Parser` containing:
-  - `\_\_init\_\_` method, with such arguments: (self, path) where:
+  - `__init__` method, with such arguments: (self, path) where:
     - path - path to a file
   - `parse` method returning such hash (dict):
     `{"fps": INT, "replay": [
