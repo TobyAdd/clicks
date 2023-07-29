@@ -21,17 +21,16 @@ file in `parser` directory, and add to it:
 - **Class** `Parser` containing:
   - `__init__` method, with such arguments: (self, path) where:
     - path - path to a file
-  - `parse` method returning such hash (dict):
-    `{"fps": INT, "replay": [
-        {"frame": INT, "hold": BOOL, "player": INT(1,2)},
-        ...
-    ]}`
+  - `parse` method returning such hash (dict):<br>
+    `{"fps": INT, "replay": [`<br>
+    `    {"frame": INT, "hold": BOOL, "player": INT(1,2)},`<br>
+    `    ...`<br>
+    `]}`<br>
 
 When Clickbot is built with PyInstaller parsers get fusen into the executable and to add/delete
-
-parsers you need to rebuild application. Only parser included with standart distro is ReplayEngine
-
-parser ([replayengine.py](/parsers/replayengine.py)). Feel free to fork repo and add your own parsers.
+parsers you need to rebuild application. Main parser included with standart distro is ReplayEngine
+parser ([replayengine.py](/parsers/replayengine.py)), but not limited to. Feel free to fork repo
+and add your own parsers.
 
 ## Clickpacks
 
