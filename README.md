@@ -6,8 +6,8 @@ This is repo for RE clickbot. [Original RE repo](https://github.com/tobyadd/repl
 This clickbot is used in ReplayBot, but if you want you can use it in your own projects.
 
 ```shell
-$ ./clicks.py -c"clickpack folder" -r"replay.re" -o"output.flac" \
-    -softc300 -hardc-1 -end5 # this arguments are optional
+$ ./clicks.py -c="clickpack folder" -r="replay.re" -o="output.flac" \
+    -s=300 -h=-1 -e=5 # this arguments are optional
 ```
 Bundled binaries available in [releases](https://github.com/tobyadd/clicks).
 
