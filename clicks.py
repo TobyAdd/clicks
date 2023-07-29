@@ -127,9 +127,22 @@ if shutil.which("ffmpeg") is None:
     print(f"No ffmpeg in PATH is found. Download it or add its folder to PATH.")
     exit(1)
 
-def parse_arg(arg, t, orig):
+dep_args = []
+
+def parse_arg(arg, t, orig, deprecated=None):
+    global dep_args
+
     if arg.startswith(t):
+
+        if orig is not None:
+            return orig
+
+        if deprecated is not None and t not in dep_args:
+            print(f"WARNING: {t} is deprecated and soon will be removed. use {deprecated} intread")
+            dep_args.append(t)
+        
         return arg[len(t):]
+    
     return orig
 
 replay_file = None
@@ -140,17 +153,24 @@ softclick_delay = -1
 hardclick_delay = -1
 
 for arg in argv[1:]:
-    replay_file = parse_arg(arg, "-r", replay_file)
-    clickpack_folder = parse_arg(arg, "-c", clickpack_folder)
-    output_file = parse_arg(arg, "-o", output_file)
-    softclick_delay = int(parse_arg(arg, "-softc", softclick_delay))
-    hardclick_delay = int(parse_arg(arg, "-hardc", hardclick_delay))
-    end_seconds = int(parse_arg(arg, "-end", end_seconds))
+    replay_file = parse_arg(arg, "-r=", replay_file)
+    clickpack_folder = parse_arg(arg, "-c=", clickpack_folder)
+    output_file = parse_arg(arg, "-o=", output_file)
+    softclick_delay = int(parse_arg(arg, "-s=", softclick_delay))
+    hardclick_delay = int(parse_arg(arg, "-h=", hardclick_delay))
+    end_seconds = int(parse_arg(arg, "-e=", end_seconds))
+
+    replay_file = parse_arg(arg, "-r", replay_file, "-r=")
+    clickpack_folder = parse_arg(arg, "-c", clickpack_folder, "-c=")
+    output_file = parse_arg(arg, "-o", output_file, "-o=")
+    softclick_delay = int(parse_arg(arg, "-softc", softclick_delay, "-s="))
+    hardclick_delay = int(parse_arg(arg, "-hardc", hardclick_delay, "-h="))
+    end_seconds = int(parse_arg(arg, "-end", end_seconds, "-e="))
 
 required_args = [replay_file, clickpack_folder, output_file]
 
 if any([i is None for i in required_args]):
-    print(f"usage: {sys.argv[0]} -r\"<*.re>\" -c\"<*>\" -o\"<*.(mp3|wav|ogg|flac|...)>\" [-softc<-1..inf>] [-hardc<-1..inf>] [-end<0..inf>]")
+    print(f"usage: {sys.argv[0]} -r=\"<*.re>\" -c=\"<*>\" -o=\"<*.(mp3|wav|ogg|flac|...)>\" [-s=<-1..inf>] [-h=<-1..inf>] [-e=<0..inf>]\nNOTE: -r, -c, -o, and others are deprecated and soon will be removed, please, use equal-notation")
     exit(1)
 
 print(f"Replay: {replay_file}")
