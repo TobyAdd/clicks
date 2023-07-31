@@ -10,6 +10,12 @@ import ast
 import sys
 import os
 
+
+# os.chdir(os.path.dirname(__file__))
+
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    frozen = True
+
 pjoin = os.path.join
 
 class Clickpack:
@@ -177,12 +183,19 @@ print(f"Replay: {replay_file}")
 
 ########## PARSING ##########
 
+if frozen:
+    old_cwd = os.getcwd()
+    os.chdir(sys._MEIPASS)
+
 for i in os.listdir("parsers"):
     if i.endswith(".py"):
         parser = getattr(__import__(f"parsers.{i.replace('.py', '')}"), i.replace(".py", ''))
 
         if fnmatch.fnmatch(replay_file, parser.wildcard):
             break
+
+if frozen:
+    os.chdir(old_cwd)
 
 replay = parser.Parser(replay_file).parse()
 
