@@ -1,4 +1,4 @@
-This README is also available in [russian](/README.ru,md) language.
+This README is also available in [russian](/README.ru.md) language.
 
 # Clickbot for ReplayEngine
 This is repo for RE clickbot. [Original RE repo](https://github.com/tobyadd/replayengine)
