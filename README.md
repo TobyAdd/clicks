@@ -3,7 +3,7 @@ This is repo for RE clickbot. [Original RE repo](https://github.com/tobyadd/repl
 
 ## Overview
 
-This clickbot is used in ReplayBot, but if you want you can use it in your own projects.
+This clickbot is used in ReplayEngine, but if you want you can use it in your own projects.
 
 ```shell
 $ ./clicks.py -c="clickpack folder" -r="replay.re" -o="output.flac" \
