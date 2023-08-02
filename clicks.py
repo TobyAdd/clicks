@@ -13,6 +13,7 @@ import os
 
 # os.chdir(os.path.dirname(__file__))
 
+frozen = False
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     frozen = True
 
@@ -54,6 +55,10 @@ class Clickpack:
         # pjoin == os.path.join (see line 9)
         # two players
         
+        if not os.path.isdir(clickpack_folder):
+            print(f"ERROR: clickpack parsing: no directory {clickpack_folder} found")
+            exit(1)
+
         p2_required = [
             "p2",
             "p2/holds",
@@ -71,8 +76,8 @@ class Clickpack:
                 print(f"WARN: clickpack parsing: no {i} found in clickpack - defaulting to p1")
                 break
             
-            wavlist = [i for i in os.listdir(pjoin(clickpack_folder, *i.split("/"))) if i.endswith(".wav")]
-            if len(wavlist) == 0:
+            sndlist = [i for i in os.listdir(pjoin(clickpack_folder, *i.split("/"))) if i.lower().endswith((".wav", ".mp3", ",ogg", ".flac"))]
+            if len(sndlist) == 0:
                 nop2 = True
                 print(f"WARN: clickpack parsing: no wavs found in {i} - defaulting to p1")
                 break
@@ -93,13 +98,13 @@ class Clickpack:
                         clickpack[p][click_type] = None
                         break
 
-                    wavlist = [i for i in os.listdir(pjoin(clickpack_folder, p, click_type, click_part)) if i.endswith(".wav")]
-                    if len(wavlist) == 0:
+                    sndlist = [i for i in os.listdir(pjoin(clickpack_folder, p, click_type, click_part)) if i.lower().endswith((".wav", ".mp3", ",ogg", ".flac"))]
+                    if len(sndlist) == 0:
                         print(f"WARN: clickpack parsing: no wavs in {p}/{click_type}/{click_part}, turning {click_type} off")
                         clickpack[p][click_type] = None
                         break
     
-                    clickpack[p][click_type][click_part] = [AudioSegment.from_wav(i) for i in map(lambda x: pjoin(clickpack_folder, p, click_type, click_part, x), wavlist)]
+                    clickpack[p][click_type][click_part] = [AudioSegment.from_file(i, i.split(".")[-1].lower()) for i in map(lambda x: pjoin(clickpack_folder, p, click_type, click_part, x), sndlist)]
 
             ########## STANDART CLICKS ##########
             for click_part in ("holds", "releases"):
@@ -107,12 +112,12 @@ class Clickpack:
                     print(f"ERROR: clickpack parsing: {p} folder must have {click_part} folder")
                     exit(1)
 
-                wavlist = [i for i in os.listdir(pjoin(clickpack_folder, p, click_part)) if i.endswith(".wav")]
-                if len(wavlist) == 0:
+                sndlist = [i for i in os.listdir(pjoin(clickpack_folder, p, click_part)) if i.lower().endswith((".wav", ".mp3", ",ogg", ".flac"))]
+                if len(sndlist) == 0:
                     print(f"ERROR: clickpack parsing: there should be at least one wav in {p}/{click_part}")
                     exit(1)
 
-                clickpack[p][click_part] = [AudioSegment.from_wav(i) for i in map(lambda x: pjoin(clickpack_folder, p, click_part, x), wavlist)]
+                clickpack[p][click_part] = [AudioSegment.from_file(i, i.split(".")[-1].lower()) for i in map(lambda x: pjoin(clickpack_folder, p, click_part, x), sndlist)]
 
         if nop2:
             clickpack["p2"] = clickpack["p1"]
