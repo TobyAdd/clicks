@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from multiprocessing import Process, Queue, Value
 from pydub import AudioSegment
 from sys import argv, exit
 import fnmatch
@@ -124,9 +125,20 @@ class Clickpack:
 
         return clickpack
 
+def chop_replay(arr, pieces):
+    res = []
+    a = len(arr) // pieces
+    
+    for i in range(pieces):
+        res.append(arr[i * a:(i + 1) * a])
+
+    res[-1] += arr[pieces * a:]
+    return res
+
 def parse_seconds(time):
+    time = round(time)
     seconds = time % 60
-    mins = (int(time) % 60 ** 2) // 60
+    mins = (int(time) % (60 ** 2)) // 60
     return f"{mins:0>2}:{round(seconds, 2):0>2}"
 
 def print_progress_bar(value, max_value, pb_len):
@@ -162,6 +174,7 @@ output_file = None
 end_seconds = 3
 softclick_delay = -1
 hardclick_delay = -1
+processes_to_spawn = 12
 
 for arg in argv[1:]:
     replay_file = parse_arg(arg, "-r=", replay_file)
@@ -170,6 +183,7 @@ for arg in argv[1:]:
     softclick_delay = int(parse_arg(arg, "-s=", softclick_delay))
     hardclick_delay = int(parse_arg(arg, "-h=", hardclick_delay))
     end_seconds = int(parse_arg(arg, "-e=", end_seconds))
+    processes_to_spawn = int(arg[3:]) if arg.startswith("-p=") else processes_to_spawn
 
     replay_file = parse_arg(arg, "-r", replay_file, "-r=")
     clickpack_folder = parse_arg(arg, "-c", clickpack_folder, "-c=")
@@ -181,7 +195,7 @@ for arg in argv[1:]:
 required_args = [replay_file, clickpack_folder, output_file]
 
 if any([i is None for i in required_args]):
-    print(f"usage: {sys.argv[0]} -r=\"<*.re>\" -c=\"<*>\" -o=\"<*.(mp3|wav|ogg|flac|...)>\" [-s=<-1..inf>] [-h=<-1..inf>] [-e=<0..inf>]\nNOTE: -r, -c, -o, and others are deprecated and soon will be removed, please, use equal-notation")
+    print(f"usage: {sys.argv[0]} -r=\"<*.re>\" -c=\"<*>\" -o=\"<*.(mp3|wav|ogg|flac|...)>\" [-s=<-1..inf>] [-h=<-1..inf>] [-e=<0..inf>] [-p=<1..inf>]\nNOTE: -r, -c, -o, and others are deprecated and soon will be removed, please, use equal-notation")
     exit(1)
 
 print(f"Replay: {replay_file}")
@@ -207,6 +221,7 @@ replay = parser.Parser(replay_file).parse()
 print(f"Parser: {parser.name} ({os.path.basename(parser.__file__)})")
 print(f"FPS: {replay['fps']}")
 print(f"Actions: {len(replay['replay'])}")
+print(f"Parallel processes: {processes_to_spawn}")
 
 ########## GENERATING ##########
 
@@ -218,47 +233,76 @@ print(f"Duration: {parse_seconds(duration)}")
 
 clickpack = Clickpack(clickpack_folder)
 
-output = AudioSegment.silent(duration=duration)
+result = AudioSegment.silent(duration=duration)
 
-p1_click_delta = 0
-p1_last_click = 0
+def write_actions(full, replay, fps, result_queue, n):
 
-p2_click_delta = 0
-p2_last_click = 0
+    r = AudioSegment.silent(duration=duration)
 
-for key, action in enumerate(replay['replay'], start=1):
-    print_progress_bar(key, len(replay['replay']), os.get_terminal_size()[0] - 9)
-    # print(f"Rendering Actions ({i}/{len(replay['replay'])})", end="\r")
-    player = action["player"]
+    p1_click_delta = 0
+    p1_last_click = 0
 
-    if player == 1:
-        p1_click_delta = action["frame"] - p1_last_click
+    p2_click_delta = 0
+    p2_last_click = 0
 
-        sound = None
-        if softclick_delay != -1 and clickpack.data["p1"]["softclicks"] is not None and p1_click_delta <= softclick_delay:
-            sound = random.choice(clickpack.data["p1"]["softclicks"]["holds" if action["hold"] else "releases"])
-        elif hardclick_delay != -1 and clickpack.data["p1"]["hardclicks"] is not None and p1_click_delta >= hardclick_delay:
-            sound = random.choice(clickpack.data["p1"]["hardclicks"]["holds" if acition["hold"] else "releases"])
+    for k, action in enumerate(replay):
+        print_progress_bar(n.value, full, os.get_terminal_size()[0] - 9)
+        n.value += 1
+        if "--debug" in sys.argv: print(f"pid: {os.getpid()}, ppid: {os.getppid()}, doing: {k}")
+
+        player = action["player"]
+
+        if player == 1:
+            p1_click_delta = action["frame"] - p1_last_click
+
+            sound = None
+            if softclick_delay != -1 and clickpack.data["p1"]["softclicks"] is not None and p1_click_delta <= softclick_delay:
+                sound = random.choice(clickpack.data["p1"]["softclicks"]["holds" if action["hold"] else "releases"])
+            elif hardclick_delay != -1 and clickpack.data["p1"]["hardclicks"] is not None and p1_click_delta >= hardclick_delay:
+                sound = random.choice(clickpack.data["p1"]["hardclicks"]["holds" if acition["hold"] else "releases"])
+            else:
+                sound = random.choice(clickpack.data["p1"]["holds" if action["hold"] else "releases"])
+
+            p1_last_click = action["frame"]
         else:
-            sound = random.choice(clickpack.data["p1"]["holds" if action["hold"] else "releases"])
+            p2_click_delta = action["frame"] - p2_last_click
 
-        p1_last_click = action["frame"]
-    else:
-        p2_click_delta = action["frame"] - p2_last_click
+            sound = None
+            if softclick_delay != -1 and clickpack.data["p2"]["softclicks"] is not None and p2_click_delta <= softclick_delay:
+                sound = random.choice(clickpack.data["p2"]["softclicks"]["holds" if action["hold"] else "releases"])
+            elif hardclick_delay != -1 and clickpack.data["p2"]["hardclicks"] is not None and p2_click_delta >= hardclick_delay:
+                sound = random.choice(clickpack.data["p2"]["hardclicks"]["holds" if acition["hold"] else "releases"])
+            else:
+                sound = random.choice(clickpack.data["p2"]["holds" if action["hold"] else "releases"])
 
-        sound = None
-        if softclick_delay != -1 and clickpack.data["p2"]["softclicks"] is not None and p2_click_delta <= softclick_delay:
-            sound = random.choice(clickpack.data["p2"]["softclicks"]["holds" if action["hold"] else "releases"])
-        elif hardclick_delay != -1 and clickpack.data["p2"]["hardclicks"] is not None and p2_click_delta >= hardclick_delay:
-            sound = random.choice(clickpack.data["p2"]["hardclicks"]["holds" if acition["hold"] else "releases"])
-        else:
-            sound = random.choice(clickpack.data["p2"]["holds" if action["hold"] else "releases"])
+            p2_last_click = action["frame"]
 
-        p2_last_click = action["frame"]
+        position = action["frame"] / fps * 1000
+        r = r.overlay(sound, position=position)
 
-    position = action["frame"] / replay['fps'] * 1000
-    output = output.overlay(sound, position=position)
+    result_queue.put([r])
 
-output.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
+fps = replay["fps"]
+replays = chop_replay(replay["replay"], processes_to_spawn)
+
+progress = Value('i', 1)
+
+processes = []
+queues = []
+
+for i in range(processes_to_spawn):
+    queues.append(Queue())
+    processes.append(Process(target=write_actions, args=(len(replay["replay"]), replays[i], fps, queues[i], progress)))
+
+for i in processes:
+    i.start()
+
+#for i in processes:
+#    i.join()
+
+for i in queues:
+    result = result.overlay(i.get()[0], position=0)
+
+result.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
 print(f"\nSaved as {output_file}")
 
