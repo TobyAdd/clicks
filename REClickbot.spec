@@ -8,7 +8,7 @@ a = Analysis(
     ['clicks.py'],
     pathex=[],
     binaries=[],
-    datas=[('parsers', 'parsers')],
+    datas=[('parsers', 'parsers'),],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],

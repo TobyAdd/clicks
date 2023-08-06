@@ -12,8 +12,6 @@ import sys
 import os
 
 
-# os.chdir(os.path.dirname(__file__))
-
 frozen = False
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     frozen = True
@@ -137,14 +135,21 @@ def chop_replay(arr, pieces):
 
 def parse_seconds(time):
     time = round(time)
-    seconds = time % 60
-    mins = (int(time) % (60 ** 2)) // 60
-    return f"{mins:0>2}:{round(seconds, 2):0>2}"
+    s = time % 60
+    m = (time // 60) % 60
+    h = time // 3600
+    return f"{h}:{m}:{s}"
 
 def print_progress_bar(value, max_value, pb_len):
     print(f"[{''.join(['#' if i / pb_len < value / max_value else ' ' for i in range(pb_len)])}], {round(value / max_value * 100):>3}%", end="\r")
 
-print("Replay Engine Clickbot by TobyAdd (& acidgd)")
+if "-v" in sys.argv:
+    print("Replay Engine Clickbot")
+    print("Authors: TobyAdd and acidgd")
+    print("Licensed under MIT license")
+    sys.exit(0)
+
+print("REClickbot by TobyAdd && acidgd")
 
 if shutil.which("ffmpeg") is None:
     print(f"No ffmpeg in PATH is found. Download it or add its folder to PATH.")
@@ -180,22 +185,18 @@ for arg in argv[1:]:
     replay_file = parse_arg(arg, "-r=", replay_file)
     clickpack_folder = parse_arg(arg, "-c=", clickpack_folder)
     output_file = parse_arg(arg, "-o=", output_file)
+    softclick_delay = int(parse_arg(arg, "-softc=", softclick_delay))
+    hardclick_delay = int(parse_arg(arg, "-hardc=", hardclick_delay))
+    end_seconds = int(parse_arg(arg, "-end=", end_seconds))
     softclick_delay = int(parse_arg(arg, "-s=", softclick_delay))
     hardclick_delay = int(parse_arg(arg, "-h=", hardclick_delay))
     end_seconds = int(parse_arg(arg, "-e=", end_seconds))
     processes_to_spawn = int(arg[3:]) if arg.startswith("-p=") else processes_to_spawn
 
-    replay_file = parse_arg(arg, "-r", replay_file, "-r=")
-    clickpack_folder = parse_arg(arg, "-c", clickpack_folder, "-c=")
-    output_file = parse_arg(arg, "-o", output_file, "-o=")
-    softclick_delay = int(parse_arg(arg, "-softc", softclick_delay, "-s="))
-    hardclick_delay = int(parse_arg(arg, "-hardc", hardclick_delay, "-h="))
-    end_seconds = int(parse_arg(arg, "-end", end_seconds, "-e="))
-
 required_args = [replay_file, clickpack_folder, output_file]
 
 if any([i is None for i in required_args]):
-    print(f"usage: {sys.argv[0]} -r=\"<*.re>\" -c=\"<*>\" -o=\"<*.(mp3|wav|ogg|flac|...)>\" [-s=<-1..inf>] [-h=<-1..inf>] [-e=<0..inf>] [-p=<1..inf>]\nNOTE: -r, -c, -o, and others are deprecated and soon will be removed, please, use equal-notation")
+    print(f"usage: {sys.argv[0]} -r=\"<*.re>\" -c=\"<*>\" -o=\"<*.(mp3|wav|ogg|flac|...)>\" [-s=<-1..inf> -softc=<-1..inf>] [-h=<-1..inf> -hardc=<-1..inf>] [-e=<0..inf> -end=<0..inf>] [-p=<1..inf>] [-v]")
     exit(1)
 
 print(f"Replay: {replay_file}")
@@ -224,7 +225,6 @@ print(f"Actions: {len(replay['replay'])}")
 print(f"Parallel processes: {processes_to_spawn}")
 
 ########## GENERATING ##########
-
 last_frame = replay['replay'][-1]["frame"]
 
 duration = (last_frame / replay['fps'] * 1000) + (end_seconds * 1000)
@@ -233,76 +233,74 @@ print(f"Duration: {parse_seconds(duration)}")
 
 clickpack = Clickpack(clickpack_folder)
 
-result = AudioSegment.silent(duration=duration)
+p1_click_delta = 0
+p1_last_click = 0
 
-def write_actions(full, replay, fps, result_queue, n):
+p2_click_delta = 0
+p2_last_click = 0
 
-    r = AudioSegment.silent(duration=duration)
+sounds = []
 
-    p1_click_delta = 0
-    p1_last_click = 0
+for action in replay['replay']:
+    # print_progress_bar(key, len(replay['replay']), os.get_terminal_size()[0] - 9)
+    # print(f"Rendering Actions ({i}/{len(replay['replay'])})", end="\r")
+    player = action["player"]
 
-    p2_click_delta = 0
-    p2_last_click = 0
+    if player == 1:
+        p1_click_delta = action["frame"] - p1_last_click
 
-    for k, action in enumerate(replay):
-        print_progress_bar(n.value, full, os.get_terminal_size()[0] - 9)
-        n.value += 1
-        if "--debug" in sys.argv: print(f"pid: {os.getpid()}, ppid: {os.getppid()}, doing: {k}")
-
-        player = action["player"]
-
-        if player == 1:
-            p1_click_delta = action["frame"] - p1_last_click
-
-            sound = None
-            if softclick_delay != -1 and clickpack.data["p1"]["softclicks"] is not None and p1_click_delta <= softclick_delay:
-                sound = random.choice(clickpack.data["p1"]["softclicks"]["holds" if action["hold"] else "releases"])
-            elif hardclick_delay != -1 and clickpack.data["p1"]["hardclicks"] is not None and p1_click_delta >= hardclick_delay:
-                sound = random.choice(clickpack.data["p1"]["hardclicks"]["holds" if acition["hold"] else "releases"])
-            else:
-                sound = random.choice(clickpack.data["p1"]["holds" if action["hold"] else "releases"])
-
-            p1_last_click = action["frame"]
+        sound = None
+        if softclick_delay != -1 and clickpack.data["p1"]["softclicks"] is not None and p1_click_delta <= softclick_delay:
+            sound = random.choice(clickpack.data["p1"]["softclicks"]["holds" if action["hold"] else "releases"])
+        elif hardclick_delay != -1 and clickpack.data["p1"]["hardclicks"] is not None and p1_click_delta >= hardclick_delay:
+            sound = random.choice(clickpack.data["p1"]["hardclicks"]["holds" if acition["hold"] else "releases"])
         else:
-            p2_click_delta = action["frame"] - p2_last_click
+            sound = random.choice(clickpack.data["p1"]["holds" if action["hold"] else "releases"])
 
-            sound = None
-            if softclick_delay != -1 and clickpack.data["p2"]["softclicks"] is not None and p2_click_delta <= softclick_delay:
-                sound = random.choice(clickpack.data["p2"]["softclicks"]["holds" if action["hold"] else "releases"])
-            elif hardclick_delay != -1 and clickpack.data["p2"]["hardclicks"] is not None and p2_click_delta >= hardclick_delay:
-                sound = random.choice(clickpack.data["p2"]["hardclicks"]["holds" if acition["hold"] else "releases"])
-            else:
-                sound = random.choice(clickpack.data["p2"]["holds" if action["hold"] else "releases"])
+        p1_last_click = action["frame"]
+    else:
+        p2_click_delta = action["frame"] - p2_last_click
 
-            p2_last_click = action["frame"]
+        sound = None
+        if softclick_delay != -1 and clickpack.data["p2"]["softclicks"] is not None and p2_click_delta <= softclick_delay:
+            sound = random.choice(clickpack.data["p2"]["softclicks"]["holds" if action["hold"] else "releases"])
+        elif hardclick_delay != -1 and clickpack.data["p2"]["hardclicks"] is not None and p2_click_delta >= hardclick_delay:
+            sound = random.choice(clickpack.data["p2"]["hardclicks"]["holds" if acition["hold"] else "releases"])
+        else:
+            sound = random.choice(clickpack.data["p2"]["holds" if action["hold"] else "releases"])
 
-        position = action["frame"] / fps * 1000
-        r = r.overlay(sound, position=position)
+        p2_last_click = action["frame"]
 
-    result_queue.put([r])
+    position = action["frame"] / replay['fps'] * 1000
+    sounds.append((position, sound))
 
-fps = replay["fps"]
-replays = chop_replay(replay["replay"], processes_to_spawn)
+chopped = chop_replay(sounds, processes_to_spawn)
 
-progress = Value('i', 1)
+output = AudioSegment.silent(duration=duration)
+
+progress = Value("i", 1)
+
+def write_sound(length, sounds, q, n):
+    output = AudioSegment.silent(duration=length)
+    
+    for pos, snd in sounds:
+        print_progress_bar(n.value, length, os.get_terminal_size()[0] - 9)
+        n.value += 1
+        output = output.overlay(snd, position=pos)
+
+    q.put(output)
 
 processes = []
 queues = []
 
 for i in range(processes_to_spawn):
     queues.append(Queue())
-    processes.append(Process(target=write_actions, args=(len(replay["replay"]), replays[i], fps, queues[i], progress)))
+    processes.append(Process(target=write_sound, args=(len(sounds), chopped[i], queues[i], progress)))
 
-for i in processes:
-    i.start()
+for i in processes: i.start()
 
-#for i in processes:
-#    i.join()
+for q in queues: output = output.overlay(q.get(), position=0)
 
-for i in queues:
-    result = result.overlay(i.get()[0], position=0)
-
-result.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
-print(f"\nSaved as {output_file}")
+print("\nSaving...")
+output.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
 
