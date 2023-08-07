@@ -134,19 +134,58 @@ def chop_replay(arr, pieces):
     return res
 
 def parse_seconds(time):
-    time = round(time)
+    ms = round(time % 100)
+    time = round(time) // 1000
     s = time % 60
     m = (time // 60) % 60
     h = time // 3600
-    return f"{h}:{m}:{s}"
+    return f"{h:0>2}:{m:0>2}:{s:0>2}.{ms:0>2}"
 
 def print_progress_bar(value, max_value, pb_len):
     print(f"[{''.join(['#' if i / pb_len < value / max_value else ' ' for i in range(pb_len)])}], {round(value / max_value * 100):>3}%", end="\r")
 
 if "-v" in sys.argv:
-    print("Replay Engine Clickbot")
+    print("Replay Engine Clickbot v0.71b")
     print("Authors: TobyAdd and acidgd")
     print("Licensed under MIT license")
+    sys.exit(0)
+
+if "-h" in sys.argv:
+    print("Help:")
+    print(f"usage: {sys.argv[0]} ARGUMENTS")
+    print("arguments:")
+    print("\t-r=*.re           Path to replay to create clicks for")
+    print("\t-c=*/             Path to clickpack folder")
+    print("\t-o=*.*            Path to output file (type is determined by extension)")
+    print("\t-s=* -softc=*     Softclick delay in milliseconds (optional, default is 200)")
+    print("\t-h=* -hardc=*     Hardclick delay in milliseconds (optional, default is 500)")
+    print("\t-e=* -end=*       End (silence at the end) segment length in seconds (optional, default is 3)")
+    print("\t-p=*              Parallel processes to spawn at the same time (optiona, default is 1)")
+    print("\t-h                Print this gibberish and exit")
+    print("\t-v                Print version, credits and license and exit")
+    print("\t-cs               Print clickpack structure and exit")
+    sys.exit(0)
+
+if "-cs" in sys.argv:
+    print("""clickpack/
+├─ p1/
+│  ├─ softclicks/  # optional
+│  │  ├─ holds/
+│  │  ├─ releases/
+│  ├─ hardclicks/  # optional
+│  │  ├─ holds/
+│  │  ├─ releases/
+│  ├─ holds/
+│  ├─ releases/
+├─ p2/             # optional
+│  ├─ softclicks/  # optional
+│  │  ├─ holds/
+│  │  ├─ releases/
+│  ├─ hardclicks/  # optional
+│  │  ├─ holds/
+│  │  ├─ releases/
+│  ├─ holds/
+│  ├─ releases/""")
     sys.exit(0)
 
 print("REClickbot by TobyAdd && acidgd")
@@ -179,7 +218,7 @@ output_file = None
 end_seconds = 3
 softclick_delay = -1
 hardclick_delay = -1
-processes_to_spawn = 12
+processes_to_spawn = 1
 
 for arg in argv[1:]:
     replay_file = parse_arg(arg, "-r=", replay_file)
@@ -274,33 +313,52 @@ for action in replay['replay']:
     position = action["frame"] / replay['fps'] * 1000
     sounds.append((position, sound))
 
-chopped = chop_replay(sounds, processes_to_spawn)
+if "--debug" in sys.argv:
+    for k, i in sounds:
+        n = True
+        for j in i._data:
+            if j != 0: n = False
+        if n is True:
+            print(f"{k} is empty")
 
-output = AudioSegment.silent(duration=duration)
+
+chopped = chop_replay(sounds, processes_to_spawn)
 
 progress = Value("i", 1)
 
-def write_sound(length, sounds, q, n):
-    output = AudioSegment.silent(duration=length)
+def write_sound(duration, length, snds, q, n):
+    r = AudioSegment.silent(duration=duration)
     
-    for pos, snd in sounds:
+    for pos, snd in snds:
         print_progress_bar(n.value, length, os.get_terminal_size()[0] - 9)
         n.value += 1
-        output = output.overlay(snd, position=pos)
+        r = r.overlay(snd, position=pos)
 
-    q.put(output)
+    q.put(r)
 
 processes = []
 queues = []
 
 for i in range(processes_to_spawn):
     queues.append(Queue())
-    processes.append(Process(target=write_sound, args=(len(sounds), chopped[i], queues[i], progress)))
+    processes.append(Process(target=write_sound, args=(duration, len(sounds), chopped[i], queues[i], progress)))
 
-for i in processes: i.start()
+for p in processes:
+    # p.daemonize = True
+    p.start()
+
+# for p in processes: p.join()
+
+for q in queues:
+    a = q.get()
+    q.put(a)
+    a.export("temp.mp3")
+
+print("\nSaving...")
+
+output = AudioSegment.silent(duration=duration)
 
 for q in queues: output = output.overlay(q.get(), position=0)
 
-print("\nSaving...")
 output.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
 
