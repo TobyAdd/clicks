@@ -7,6 +7,7 @@ import fnmatch
 import struct
 import random
 import shutil
+import math
 import ast
 import sys
 import os
@@ -141,11 +142,36 @@ def parse_seconds(time):
     h = time // 3600
     return f"{h:0>2}:{m:0>2}:{s:0>2}.{ms:0>2}"
 
-def print_progress_bar(value, max_value, pb_len):
-    print(f"[{''.join(['#' if i / pb_len < value / max_value else ' ' for i in range(pb_len)])}], {round(value / max_value * 100):>3}%", end="\r")
+def raw_print(*args, end="", sep=" "):
+    print(*args, end=end, sep=sep)
+
+def print_progress_bar(value, max_value):
+    pb_len = os.get_terminal_size()[0] - 8
+
+    raw_print("[")
+    
+    a = [value / max_value > i / pb_len for i in range(pb_len)]
+    for k in range(len(a)):
+        if a[k]:
+            if not k == len(a) - 1:
+                if not a[k + 1]:
+                    raw_print(">")
+                else:
+                    raw_print("=")
+            else:
+                raw_print("=")
+        else:
+            raw_print(" ")
+
+    raw_print("] ")
+
+    raw_print(f"{math.ceil(value / max_value * 100): >3}%\r")
+
+def clear_line():
+    raw_print(f"\r{' ' * os.get_terminal_size()[0]}\r")
 
 if "-v" in sys.argv:
-    print("Replay Engine Clickbot v0.71b")
+    print("Replay Engine Clickbot v1.0")
     print("Authors: TobyAdd and acidgd")
     print("Licensed under MIT license")
     sys.exit(0)
@@ -160,7 +186,6 @@ if "-h" in sys.argv:
     print("\t-s=* -softc=*     Softclick delay in milliseconds (optional, default is 200)")
     print("\t-h=* -hardc=*     Hardclick delay in milliseconds (optional, default is 500)")
     print("\t-e=* -end=*       End (silence at the end) segment length in seconds (optional, default is 3)")
-    print("\t-p=*              Parallel processes to spawn at the same time (optiona, default is 1)")
     print("\t-h                Print this gibberish and exit")
     print("\t-v                Print version, credits and license and exit")
     print("\t-cs               Print clickpack structure and exit")
@@ -194,9 +219,7 @@ if shutil.which("ffmpeg") is None:
     print(f"No ffmpeg in PATH is found. Download it or add its folder to PATH.")
     exit(1)
 
-dep_args = []
-
-def parse_arg(arg, t, orig, deprecated=None):
+def parse_arg(arg, t, orig):
     global dep_args
 
     if arg.startswith(t):
@@ -204,10 +227,6 @@ def parse_arg(arg, t, orig, deprecated=None):
         if orig is not None:
             return orig
 
-        if deprecated is not None and t not in dep_args:
-            print(f"WARNING: {t} is deprecated and soon will be removed. use {deprecated} intread")
-            dep_args.append(t)
-        
         return arg[len(t):]
     
     return orig
@@ -230,7 +249,6 @@ for arg in argv[1:]:
     softclick_delay = int(parse_arg(arg, "-s=", softclick_delay))
     hardclick_delay = int(parse_arg(arg, "-h=", hardclick_delay))
     end_seconds = int(parse_arg(arg, "-e=", end_seconds))
-    processes_to_spawn = int(arg[3:]) if arg.startswith("-p=") else processes_to_spawn
 
 required_args = [replay_file, clickpack_folder, output_file]
 
@@ -278,10 +296,10 @@ p1_last_click = 0
 p2_click_delta = 0
 p2_last_click = 0
 
-sounds = []
+output = AudioSegment.silent(duration=duration)
 
-for action in replay['replay']:
-    # print_progress_bar(key, len(replay['replay']), os.get_terminal_size()[0] - 9)
+for key, action in enumerate(replay['replay']):
+    print_progress_bar(key, len(replay['replay']))
     # print(f"Rendering Actions ({i}/{len(replay['replay'])})", end="\r")
     player = action["player"]
 
@@ -311,54 +329,11 @@ for action in replay['replay']:
         p2_last_click = action["frame"]
 
     position = action["frame"] / replay['fps'] * 1000
-    sounds.append((position, sound))
-
-if "--debug" in sys.argv:
-    for k, i in sounds:
-        n = True
-        for j in i._data:
-            if j != 0: n = False
-        if n is True:
-            print(f"{k} is empty")
-
-
-chopped = chop_replay(sounds, processes_to_spawn)
-
-progress = Value("i", 1)
-
-def write_sound(duration, length, snds, q, n):
-    r = AudioSegment.silent(duration=duration)
-    
-    for pos, snd in snds:
-        print_progress_bar(n.value, length, os.get_terminal_size()[0] - 9)
-        n.value += 1
-        r = r.overlay(snd, position=pos)
-
-    q.put(r)
-
-processes = []
-queues = []
-
-for i in range(processes_to_spawn):
-    queues.append(Queue())
-    processes.append(Process(target=write_sound, args=(duration, len(sounds), chopped[i], queues[i], progress)))
-
-for p in processes:
-    # p.daemonize = True
-    p.start()
-
-# for p in processes: p.join()
-
-for q in queues:
-    a = q.get()
-    q.put(a)
-    a.export("temp.mp3")
-
-print("\nSaving...")
-
-output = AudioSegment.silent(duration=duration)
-
-for q in queues: output = output.overlay(q.get(), position=0)
+    output = output.overlay(sound, position=position)
 
 output.export(output_file, format=output_file.split(".")[-1], bitrate="320k")
+
+clear_line()
+
+print(f"Saved as {output_file}!")
 
